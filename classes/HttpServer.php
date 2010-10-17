@@ -4,11 +4,15 @@
  * 
  * Emuleert het gedrag van ApacheHTTPd door o.a de $_SERVER & $_GET variabele aan te passen.
  */
-class HttpServer extends Website {
+class HttpServer extends Object {
 
-	public
-		$document, // Document object
-		$tickInterval; // Aantal seconden tussen de tick()s
+	/**
+	 *
+	 * @var Website
+	 */
+	public $website;
+
+	public $tickInterval; // Aantal seconden tussen de tick()s
 
 	private 
 		$port,
@@ -16,19 +20,16 @@ class HttpServer extends Website {
 		$logStream, // Filepointer naar de logfile. Zie log()
 		$lastTick; // timestamp van de laatste aanroep van tick() via interrupt()
 
-	function __construct($port) {
-		define('WEBROOT', '/');
-		define('WEBPATH', '/');
-		$this->depth = 0;
-		parent::__construct();
-		$this->publicMethods = array_diff($this->publicMethods, array('run', 'tick', 'parseRequest', 'sendResponse', 'handleRequest')); // Een aantal functies *niet* public maken
+	function __construct($website, $port = 80) {
+		$this->website = $website;
 		$this->port = $port;
 		$this->_server = array(
 			'SERVER_SOFTWARE' => 'SledgeHammer/1.2 HttpServer',
 			'SERVER_PROTOCOL' => 'HTTP/1.1',
 			'SERVER_PORT' => $this->port,
 		);
-		$this->handle_filenames_without_extension = true;
+		define('WEBROOT', '/');
+		define('WEBPATH', '/');
 	}	
 
 	/**
@@ -89,6 +90,11 @@ class HttpServer extends Website {
 				continue;
 			}
 			if ($httpStatus == 200) {
+				$document = $this->getPublicFile();
+				if ($document == false) {
+					$document = $this->website->generateDocument();
+				}
+				/*
 				$component = $this->execute();
 				$isWrapable = true;
 				if (method_exists($component, 'isWrapable')) {
@@ -98,9 +104,12 @@ class HttpServer extends Website {
 					$this->document->component = $component;
 				} else {
 					$this->document = $component;
-				}
+				}*/
 			} else {
-				$codes = array(
+				$document = new HTMLDocument();
+				$document->content = new HttpError($httpStatus);
+
+				/*$codes = array(
 					400 => array('text' => 'Bad Request', 'description' => 'Server begreep de aanvraag niet'),
 					501 => array('text' => 'Not Implemented', 'description' => 'Dit wordt niet door de server ondersteund'),
 				);
@@ -108,8 +117,9 @@ class HttpServer extends Website {
 				$this->document->headers[] = $_SERVER['SERVER_PROTOCOL'].' '.$httpStatus.' '.$error['text'];
 				$this->document->title = $httpStatus.' - '.$error['text'];
 				$this->document->component = new MessageBox('warning.png', $error['text'], $error['description']);
+				 * */
 			}
-			$this->sendResponse($clientSocket, ob_get_clean());
+			$this->sendResponse($clientSocket, $document, ob_get_clean());
 			$this->cleanupResponse();
 			if ($_SERVER['REQUEST_PROTOCOL'] == 'HTTP/1.0' || strtolower(value($_SERVER['HTTP_CONNECTION'])) == 'close') { // Moet de connectie worden gesloten?
 				fclose($clientSocket); // close connection (send EOF)
@@ -133,7 +143,7 @@ class HttpServer extends Website {
 	 * Net als Website/VirtualFolder
 	 * @return Component|Document
 	 */
-	function execute() {
+	function getPublicFile() {
 		$webpath = URL::info('path');
 		$modulePath = PATH.'sledgehammer';
 		$files = array(
@@ -165,7 +175,7 @@ class HttpServer extends Website {
 				}
 			}
 		}
-		return VirtualFolder::execute();
+		return false;
 	}
 
 	/**
@@ -181,6 +191,7 @@ class HttpServer extends Website {
 		if (is_resource($this->logStream)) {
 			fputs($this->logStream, date('[Y-m-d H:i:s] ').$message."\n");
 		}
+		echo $message;
 	}
 
 	/**
@@ -257,38 +268,43 @@ class HttpServer extends Website {
 		$_GET = array();
 		URL::$cached_extract_path = null;
 		$GLOBALS['VirtualFolder'] = null;
-		$this->document = null;
-		$this->initDocument(); // Nieuw document object instellen.
 	}
 
-	protected function sendResponse($socket, $responsePrefix = '') {
-		// HTTP Headers
-		// Van alle headers alleen de laatste waarde versturen.
-		$headers = array(
-			'HTTP/1.x' => $_SERVER['SERVER_PROTOCOL'].' 200 OK',
-			'Date' => 'Date: '.date('r'),
-		);
-		$httpStatus = 200;
-		foreach ($this->document->headers as $index => $header) {
-			if (substr($header, 0, 5) == 'HTTP/') { // Is er HTTP status header ingesteld? (404 etc)
-				$headers['HTTP/1.x'] = $header; 
-				$httpStatus = intval(substr($header, 9, 3));
-				continue;
-			}
-			$name = substr($header,0, strpos($header, ': '));
-			$headers[$name] = $header;
+	/**
+	 *
+	 * @param resource $socket
+	 * @param Document $document
+	 * @param string $responsePrefix
+	 */
+	protected function sendResponse($socket, $document, $responsePrefix = '') {
+
+		// Get HTTP Headers
+		$documentHeaders = $document->getHeaders();
+		$headers = $documentHeaders['http'];
+		if (empty($headers['Status'])) { // Is er geen (error)code ingesteld?
+			$headers['Status'] = '200 OK';
 		}
+		$headers['Date'] = date('r');
+
+		// Get Content
 		ob_start();
-		$this->document->headers = array();
- 		$contents = component_to_string($this->document); // Generate contents string
-		$contents = $responsePrefix.ob_get_clean().$contents;
+		$document->render();
+		$contents = $responsePrefix.ob_get_clean();
 		$contentLength = strlen($contents);
-		if ($httpStatus == 200) {
-			$headers['Content-Length'] = 'Content-Length: '.$contentLength;
+		if ($headers['Status']  == '200 OK') {
+			$headers['Content-Length'] = $contentLength;
 		}
-		$this->log($_SERVER['REQUEST_METHOD'].' '.$_SERVER['REQUEST_URI'].' '.$httpStatus.' '.($contentLength == 0 ? '-' : $contentLength));
+		// Log request
+		$this->log($_SERVER['REQUEST_METHOD'].' '.$_SERVER['REQUEST_URI'].' '.substr($headers['Status'], 0, 3).' '.($contentLength == 0 ? '-' : $contentLength));
+
+		// Build HTTP headers in a string
 		$eol = "\r\n";
-		$response = implode($eol, $headers).$eol.$eol.$contents; // Voeg de headers en de contents samen in 1 response string
+		$response = $_SERVER['SERVER_PROTOCOL'].' '.$headers['Status'].$eol;
+		unset($headers['Status']);
+		foreach ($headers as $header => $value) {
+			$response .= $header.': '.$value.$eol;
+		}
+		$response .= $eol.$contents; // Voeg de headers en de contents samen in 1 response string
 		fwrite($socket, $response); // Verstuur de response
 	}
 
