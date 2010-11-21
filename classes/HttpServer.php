@@ -18,7 +18,8 @@ class HttpServer extends Object {
 		$port,
 		$_server, // De waardes die elke request als bron gebruikt wordt voor de $_SERVER variabele
 		$logStream, // Filepointer naar de logfile. Zie log()
-		$lastTick; // timestamp van de laatste aanroep van tick() via interrupt()
+		$lastTick,// timestamp van de laatste aanroep van tick() via interrupt()
+		$tickHandlers = array();
 
 	function __construct($website, $port = 80) {
 		$this->website = $website;
@@ -35,7 +36,7 @@ class HttpServer extends Object {
 	/**
 	 * Start de server
 	 */
-	function run() {
+	function handleRequests() {
 		// De serverSocket openen en luisteren naar binnenkomende requests.
 		$serverSocket = stream_socket_server('tcp://0.0.0.0:'.$this->port, $err_nr, $error_message);
 		if (!$serverSocket) {
@@ -94,30 +95,9 @@ class HttpServer extends Object {
 				if ($document == false) {
 					$document = $this->website->generateDocument();
 				}
-				/*
-				$component = $this->execute();
-				$isWrapable = true;
-				if (method_exists($component, 'isWrapable')) {
-					$isWrapable =  $component->isWrapable();
-				}
-				if ($isWrapable) {
-					$this->document->component = $component;
-				} else {
-					$this->document = $component;
-				}*/
 			} else {
 				$document = new HTMLDocument();
 				$document->content = new HttpError($httpStatus);
-
-				/*$codes = array(
-					400 => array('text' => 'Bad Request', 'description' => 'Server begreep de aanvraag niet'),
-					501 => array('text' => 'Not Implemented', 'description' => 'Dit wordt niet door de server ondersteund'),
-				);
-				$error = $codes[$httpStatus];
-				$this->document->headers[] = $_SERVER['SERVER_PROTOCOL'].' '.$httpStatus.' '.$error['text'];
-				$this->document->title = $httpStatus.' - '.$error['text'];
-				$this->document->component = new MessageBox('warning.png', $error['text'], $error['description']);
-				 * */
 			}
 			$this->sendResponse($clientSocket, $document, ob_get_clean());
 			$this->cleanupResponse();
@@ -130,12 +110,20 @@ class HttpServer extends Object {
 		fclose($serverSocket);
 	}
 
+	function addTickHandler($callback) {
+		if (is_callable($callback) == false) {
+			throw new Exception('Parameter $callback is not callable');
+		}
+		$this->tickHandlers[] = $callback;
+	}
 	/**
 	 * Deze functie zal ongeveer elke X seconden ($this->tickInterval) worden aangeroep
 	 */
 	function tick() {
 		// Virtual
-		notice(get_class($this).'->tick() not implemented');
+		foreach ($this->tickHandlers as $callback) {
+			call_user_func($callback);
+		}
 	}
 
 	/**
@@ -191,7 +179,7 @@ class HttpServer extends Object {
 		if (is_resource($this->logStream)) {
 			fputs($this->logStream, date('[Y-m-d H:i:s] ').$message."\n");
 		}
-		echo $message;
+		echo $message."\n";
 	}
 
 	/**
