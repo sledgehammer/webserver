@@ -200,7 +200,7 @@ class HttpServer extends Object {
 		$_SERVER = $this->_server;
 		$initialLine = fgets($socket);
 		if ($initialLine === false) {
-			$GLOBALS['VirtualFolder'] = $this;
+			$GLOBALS['VirtualFolder'] = $this->website;
 			// $this->log('Client disconnected');
 			return 'DISCONNECTED';
 		}
