@@ -10,7 +10,8 @@ class Scheduler extends Object {
 	private
 		$max_running,
 		$auto_increment = 0,
-		$tasks = array();
+		$tasks = array(),
+		$stats = array();
 
 	/**
  	 * @param int $max_running Het maximum aantal concurrent processen
@@ -40,6 +41,15 @@ class Scheduler extends Object {
 		}
 	}
 
+	function getStats() {
+		$stats = $this->stats;
+		$counters = array();
+		foreach ($this->tasks as $task) {
+			@$stats[$task['state']]++;
+		}
+		return $stats;
+	}
+
 	function append($command) {
 		$id = $this->generate_identifier();
 		$this->tasks[$id] = array('command' => $command, 'state' => 'PENDING'); 
@@ -58,12 +68,14 @@ class Scheduler extends Object {
 
 				case 'RUNNING':
 					if ($this->is_completed($id)) {
+						@$this->stats['COMPLETED']++;
 						unset($this->tasks[$id]);
 					}
 					break;
 
 				case 'COMPLETED':
 				case 'ERROR':
+					@$this->stats[$task['state']]++;
 					unset($this->tasks[$id]);
 					break;
 			}

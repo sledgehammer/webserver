@@ -12,7 +12,8 @@ class HttpServer extends Object {
 	 */
 	public $website;
 
-	public $tickInterval; // Aantal seconden tussen de tick()s
+	public $tickInterval; // Aantal seconden tussen de tick()s. Standaard 60 sec
+	public $tickAfterRequest = true; // Voer een tick() uit na een succesvolle request (max 1x per seconde)
 
 	private 
 		$port,
@@ -65,7 +66,7 @@ class HttpServer extends Object {
 					break; // Error opgetreden. Stop server?
 				}
 				if (count($read) == 0) {
-					$this->interrupt(); // Voer mogelijk een tick() uit.
+					$this->interrupt($this->tickInterval); // Voer mogelijk een tick() uit.
 					// @todo Sluit de idle client verbinding als de timeout is verstreken
 					continue; // Opnieuw
 				}
@@ -105,6 +106,11 @@ class HttpServer extends Object {
 				fclose($clientSocket); // close connection (send EOF)
 				$clientSocket = null;
 			}
+			$interval = $this->tickInterval;
+			if ($interval > 0 && $this->tickAfterRequest) {
+				$interval = 1; // Elke seconde
+			}
+			$this->interrupt($interval);
 		}
 		$this->log('HttpServer stopped');
 		fclose($serverSocket);
@@ -115,12 +121,14 @@ class HttpServer extends Object {
 			throw new Exception('Parameter $callback is not callable');
 		}
 		$this->tickHandlers[] = $callback;
+		if ($this->tickInterval === null) {
+			$this->tickInterval = 60; // Elke minuut een een tick uitvoeren
+		}
 	}
 	/**
-	 * Deze functie zal ongeveer elke X seconden ($this->tickInterval) worden aangeroep
+	 * Deze functie zal ongeveer elke X seconden ($this->tickInterval) worden aangeroepen
 	 */
 	function tick() {
-		// Virtual
 		foreach ($this->tickHandlers as $callback) {
 			call_user_func($callback);
 		}
@@ -290,7 +298,11 @@ class HttpServer extends Object {
 		$response = $_SERVER['SERVER_PROTOCOL'].' '.$headers['Status'].$eol;
 		unset($headers['Status']);
 		foreach ($headers as $header => $value) {
-			$response .= $header.': '.$value.$eol;
+			if (is_numeric($header)) {
+				notice('Invalid HTTP header: "'.$header.': '.$value.'"', 'Use $headers format: array("Content-Type" => "text/css")');
+			} else {
+				$response .= $header.': '.$value.$eol;
+			}
 		}
 		$response .= $eol.$contents; // Voeg de headers en de contents samen in 1 response string
 		fwrite($socket, $response); // Verstuur de response
@@ -308,28 +320,28 @@ class HttpServer extends Object {
 			return stream_socket_accept($socket, -1); // Wacht oneindig op een inkomende connectie
 		}
 		while(true) {
-			$this->interrupt();
 			$read = array($socket);
 			$null = null;
-			$timeout = $this->tickInterval; // @todo calculate timeout based on lastTick
+			$timeout = $this->tickInterval + 1; // @todo calculate timeout based on lastTick
 			if (stream_select ($read, $null, $null, $timeout) === false) {
 				return false;
 			}
 			if (count($read) > 0) { // Inkomende connectie?
 				return stream_socket_accept($socket); // Accepteer de inkomende connectie
 			}
+			$this->interrupt($this->tickInterval);
 		}	
 	}
 
 	/**
 	 * Controleerd of de tick() functie aangeroepen moet worden.
 	 */
-	private function interrupt() {
-		if ($this->tickInterval <= 0) { // Is er geen tickInterval ingesteld
+	private function interrupt($interval) {
+		if ($interval <= 0) { // Is er geen interval ingesteld
 			return;
 		}
 		$now = microtime(true);
-		if ($this->lastTick < ($now - $this->tickInterval)) {
+		if ($this->lastTick < ($now - $interval)) {
 			$this->lastTick = $now;
 			$this->tick();
 		}
