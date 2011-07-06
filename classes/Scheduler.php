@@ -4,7 +4,7 @@
  * Houd bij welke video's er converteerd moeten worden en start deze wanneer mogelijk.
  * Client functies (Zie convert.php voor het "background" process)
  */
-
+namespace SledgeHammer;
 class Scheduler extends Object {
 
 	private

@@ -4,6 +4,7 @@
  * 
  * Emuleert het gedrag van ApacheHTTPd door o.a de $_SERVER & $_GET variabele aan te passen.
  */
+namespace SledgeHammer;
 class HttpServer extends Object {
 
 	/**
@@ -30,15 +31,17 @@ class HttpServer extends Object {
 			'SERVER_PROTOCOL' => 'HTTP/1.1',
 			'SERVER_PORT' => $this->port,
 		);
-		define('WEBROOT', '/');
-		define('WEBPATH', '/');
 	}	
 
 	/**
 	 * Start de server
 	 */
 	function handleRequests() {
-		// De serverSocket openen en luisteren naar binnenkomende requests.
+		if (!defined(__NAMESPACE__.'\WEBROOT')) {
+			define(__NAMESPACE__.'\WEBROOT', '/');
+			define(__NAMESPACE__.'\WEBPATH', '/');
+		}
+		// Open $serverSocket and listen to incoming requests.
 		$serverSocket = stream_socket_server('tcp://0.0.0.0:'.$this->port, $err_nr, $error_message);
 		if (!$serverSocket) {
 			error('['.$err_nr.'] '.$error_message);
@@ -94,7 +97,13 @@ class HttpServer extends Object {
 			if ($httpStatus == 200) {
 				$document = $this->getPublicFile();
 				if ($document == false) {
-					$document = $this->website->generateDocument();
+					try {
+						$document = $this->website->generateDocument();
+					} catch (\Exception $exception) {
+						ErrorHandler::handle_exception($exception);
+						$document = new HTMLDocument();
+						$document->content = new HttpError(500);
+					}
 				}
 			} else {
 				$document = new HTMLDocument();
@@ -140,7 +149,8 @@ class HttpServer extends Object {
 	 * @return Component|Document
 	 */
 	function getPublicFile() {
-		$webpath = URL::info('path');
+		$url = URL::getCurrentURL();
+		$webpath = $url->path;
 		$modulePath = PATH.'sledgehammer';
 		$files = array(
 			PATH.'application/public'.$webpath,
@@ -262,8 +272,7 @@ class HttpServer extends Object {
 	 */
 	protected function cleanupResponse() {
 		$_GET = array();
-		URL::$cached_extract_path = null;
-		$GLOBALS['VirtualFolder'] = null;
+		$GLOBALS['VirtualFolder'] = $this->website;
 	}
 
 	/**
