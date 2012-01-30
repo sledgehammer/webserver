@@ -1,27 +1,51 @@
 <?php
 /**
  * Een HTTP Server in PHP
- * 
+ *
  * Emuleert het gedrag van ApacheHTTPd door o.a de $_SERVER & $_GET variabele aan te passen.
  */
+
 namespace SledgeHammer;
+
 class HttpServer extends Object {
 
 	/**
-	 *
 	 * @var Website
 	 */
 	public $website;
 
-	public $tickInterval; // Aantal seconden tussen de tick()s. Standaard 60 sec
-	public $tickAfterRequest = true; // Voer een tick() uit na een succesvolle request (max 1x per seconde)
+	/**
+	 * @var int  Aantal seconden tussen de tick()s. Standaard 60 sec
+	 */
+	public $tickInterval;
 
-	private 
-		$port,
-		$_server, // De waardes die elke request als bron gebruikt wordt voor de $_SERVER variabele
-		$logStream, // Filepointer naar de logfile. Zie log()
-		$lastTick,// timestamp van de laatste aanroep van tick() via interrupt()
-		$tickHandlers = array();
+	/**
+	 * @var bool  Voer een tick() uit na een succesvolle request (max 1x per seconde)
+	 */
+	public $tickAfterRequest = true;
+	/**
+	 * @var int  The (socket) port number
+	 */
+	private $port;
+
+	/**
+	 * @var array  De waardes die elke request als bron gebruikt wordt voor de $_SERVER variabele
+	 */
+	private $_server;
+
+	/**
+	 * @var resource Filepointer naar de logfile. Zie log()
+	 */
+	private $logStream;
+
+	/**
+	 * @var int timestamp van de laatste aanroep van tick() via interrupt()
+	 */
+	private $lastTick;
+	/**
+	 * @var array
+	 */
+	private $tickHandlers = array();
 
 	function __construct($website, $port = 80) {
 		$this->website = $website;
@@ -31,7 +55,7 @@ class HttpServer extends Object {
 			'SERVER_PROTOCOL' => 'HTTP/1.1',
 			'SERVER_PORT' => $this->port,
 		);
-	}	
+	}
 
 	/**
 	 * Start de server
@@ -56,12 +80,12 @@ class HttpServer extends Object {
 					break;
 				}
 			} else { // Er is nog een openstaande verbinding.
-				// Bepaal de timeout van de stream_select 
+				// Bepaal de timeout van de stream_select
 				$timeout = isset($_SERVER['HTTP_KEEP_ALIVE']) ? $_SERVER['HTTP_KEEP_ALIVE'] : 60; // Timeout van een Idle connectie.
 				if ($this->tickInterval > 0 && $this->tickInterval < $timeout) {
 					$selectTimeout = $this->tickInterval; // Er is een tickIterval binnen de timeout.
 				} else {
-					$selectTimeout = $timeout; 
+					$selectTimeout = $timeout;
 				}
 				$read = array($serverSocket, $clientSocket);
 				$null = null;
@@ -82,7 +106,7 @@ class HttpServer extends Object {
 				}
 				if ($who == 'server') { // Heeft de client *geen* request klaar staan?
 					fclose($clientSocket); // De "idle" connectie sluiten
-					$clientSocket = $this->accept($serverSocket); // en de 
+					$clientSocket = $this->accept($serverSocket); // en de
 				}
 			}
 			if ($clientSocket == false) {
@@ -134,6 +158,7 @@ class HttpServer extends Object {
 			$this->tickInterval = 60; // Elke minuut een een tick uitvoeren
 		}
 	}
+
 	/**
 	 * Deze functie zal ongeveer elke X seconden ($this->tickInterval) worden aangeroepen
 	 */
@@ -168,14 +193,14 @@ class HttpServer extends Object {
 				$indexFiles = array();
 				foreach ($files as $filename) {
 					// Zoek naar index bestanden in de public/ mappen. Ala DirectoryIndex
-					foreach(array('index.html', 'index.htm', 'index.php') as $indexFile) {
+					foreach (array('index.html', 'index.htm', 'index.php') as $indexFile) {
 						$indexFiles[] = $filename.$indexFile;
 					}
 				}
 				$files = $indexFiles;
 			}
-			foreach($files as $filename) {
-               	if (is_file($filename)) {
+			foreach ($files as $filename) {
+				if (is_file($filename)) {
 					// @todo substr($path, -4) != '.php'
 					return new FileDocument($filename);
 				}
@@ -246,7 +271,7 @@ class HttpServer extends Object {
 			$pos = strpos($line, ': ');
 			$key = substr($line, 0, $pos);
 			$value = substr($line, $pos + 2);
-			$requestHeaders[$key] = rtrim($value); 
+			$requestHeaders[$key] = rtrim($value);
 		}
 		if ($line === false) { // read failed
 			return 'DISCONNECTED';
@@ -261,6 +286,7 @@ class HttpServer extends Object {
 		} else {
 			// if HTTP/1.1 client, geef error
 		}
+		URL::setCurrentURL('http://'.$_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI']);
 		return 200;
 	}
 
@@ -296,7 +322,7 @@ class HttpServer extends Object {
 		$document->render();
 		$contents = $responsePrefix.ob_get_clean();
 		$contentLength = strlen($contents);
-		if ($headers['Status']  == '200 OK') {
+		if ($headers['Status'] == '200 OK') {
 			$headers['Content-Length'] = $contentLength;
 		}
 		// Log request
@@ -317,8 +343,6 @@ class HttpServer extends Object {
 		fwrite($socket, $response); // Verstuur de response
 	}
 
-
-
 	/**
 	 * Wachten op een nieuwe request.
 	 * Houd rekening met de tickIterval en roept regelmatig de interrupt() functie aan.
@@ -328,18 +352,18 @@ class HttpServer extends Object {
 		if ($this->tickInterval <= 0) { // Is er geen tickInterval ingesteld
 			return stream_socket_accept($socket, -1); // Wacht oneindig op een inkomende connectie
 		}
-		while(true) {
+		while (true) {
 			$read = array($socket);
 			$null = null;
 			$timeout = $this->tickInterval + 1; // @todo calculate timeout based on lastTick
-			if (stream_select ($read, $null, $null, $timeout) === false) {
+			if (stream_select($read, $null, $null, $timeout) === false) {
 				return false;
 			}
 			if (count($read) > 0) { // Inkomende connectie?
 				return stream_socket_accept($socket); // Accepteer de inkomende connectie
 			}
 			$this->interrupt($this->tickInterval);
-		}	
+		}
 	}
 
 	/**
@@ -355,5 +379,7 @@ class HttpServer extends Object {
 			$this->tick();
 		}
 	}
+
 }
+
 ?>
