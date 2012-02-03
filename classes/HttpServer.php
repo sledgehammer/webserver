@@ -164,7 +164,11 @@ class HttpServer extends Object {
 	 */
 	function tick() {
 		foreach ($this->tickHandlers as $callback) {
-			call_user_func($callback);
+			try {
+				call_user_func($callback);
+			} catch (\Exception $exception) {
+				ErrorHandler::handle_exception($exception);
+			}
 		}
 	}
 
