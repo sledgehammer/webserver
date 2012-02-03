@@ -319,7 +319,11 @@ class HttpServer extends Object {
 
 		// Get Content
 		ob_start();
-		$document->render();
+		try {
+			$document->render();
+		} catch (\Exception $exception) {
+			ErrorHandler::handle_exception($exception);
+		}
 		$contents = $responsePrefix.ob_get_clean();
 		$contentLength = strlen($contents);
 		if ($headers['Status'] == '200 OK') {
