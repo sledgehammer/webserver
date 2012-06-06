@@ -1,10 +1,14 @@
 <?php
 /**
- * scheduler
+ * Scheduler
+ */
+namespace Sledgehammer;
+/**
  * Houd bij welke video's er converteerd moeten worden en start deze wanneer mogelijk.
  * Client functies (Zie convert.php voor het "background" process)
+ *
+ * @package Webserver
  */
-namespace SledgeHammer;
 class Scheduler extends Object {
 
 	private
@@ -36,7 +40,7 @@ class Scheduler extends Object {
 					}
 				}
 				sleep(1);
-			} 
+			}
 			$this->log('All tasks are completed');
 		}
 	}
@@ -52,13 +56,13 @@ class Scheduler extends Object {
 
 	function append($command) {
 		$id = $this->generate_identifier();
-		$this->tasks[$id] = array('command' => $command, 'state' => 'PENDING'); 
+		$this->tasks[$id] = array('command' => $command, 'state' => 'PENDING');
 		$this->log('New task added: '.$id);
 		// $this->schedule();
 	}
 
 	/**
-	 * Start 
+	 * Start
 	 */
 	function schedule() {
 		//$this->log('scheduling');

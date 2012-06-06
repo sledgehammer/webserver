@@ -1,13 +1,15 @@
 <?php
 /**
- * Een HTTP Server in PHP
- *
- * Emuleert het gedrag van ApacheHTTPd door o.a de $_SERVER & $_GET variabele aan te passen.
+ * Webserver
  */
-
-namespace SledgeHammer;
-
-class HttpServer extends Object {
+namespace Sledgehammer;
+/**
+ * Een HTTP Server in PHP
+ * Emuleert het gedrag van ApacheHTTPd door o.a de $_SERVER & $_GET variabele aan te passen.
+ *
+ * @package Webserver
+ */
+class Webserver extends Object {
 
 	/**
 	 * @var Website
@@ -51,20 +53,24 @@ class HttpServer extends Object {
 		$this->website = $website;
 		$this->port = $port;
 		$this->_server = array(
-			'SERVER_SOFTWARE' => 'SledgeHammer/1.2 HttpServer',
+			'SERVER_SOFTWARE' => 'Sledgehammer/Webserver',
 			'SERVER_PROTOCOL' => 'HTTP/1.1',
 			'SERVER_PORT' => $this->port,
 		);
+	}
+
+	function defineConstants() {
+		if (!defined(__NAMESPACE__.'\WEBROOT')) {
+			define(__NAMESPACE__.'\WEBROOT', '/');
+			define(__NAMESPACE__.'\WEBPATH', '/');
+		}
 	}
 
 	/**
 	 * Start de server
 	 */
 	function handleRequests() {
-		if (!defined(__NAMESPACE__.'\WEBROOT')) {
-			define(__NAMESPACE__.'\WEBROOT', '/');
-			define(__NAMESPACE__.'\WEBPATH', '/');
-		}
+		$this->defineConstants();
 		// Open $serverSocket and listen to incoming requests.
 		$serverSocket = stream_socket_server('tcp://0.0.0.0:'.$this->port, $err_nr, $error_message);
 		if (!$serverSocket) {
@@ -239,7 +245,7 @@ class HttpServer extends Object {
 		$_SERVER = $this->_server;
 		$initialLine = fgets($socket);
 		if ($initialLine === false) {
-			$GLOBALS['VirtualFolder'] = $this->website;
+			$this->cleanupResponse();
 			// $this->log('Client disconnected');
 			return 'DISCONNECTED';
 		}
@@ -264,7 +270,7 @@ class HttpServer extends Object {
 			$_SERVER['QUERY_STRING'] = substr($parts[2], $pos + 1);
 			parse_str($_SERVER['QUERY_STRING'], $_GET); // Vul de $_GET variabele met behulp van de QUERY_STRING
 		}
-		$GLOBALS['ErrorHandler']->html = (bool) value($_GET['debug']);
+		Framework::$errorHandler->html = (bool) value($_GET['debug']);
 
 		// Request headers uitlezen
 		while ($line = fgets($socket)) {
@@ -290,7 +296,7 @@ class HttpServer extends Object {
 		} else {
 			// if HTTP/1.1 client, geef error
 		}
-		URL::setCurrentURL('http://'.$_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI']);
+		URL::setCurrentURL('http://'.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI']);
 		return 200;
 	}
 
@@ -302,7 +308,7 @@ class HttpServer extends Object {
 	 */
 	protected function cleanupResponse() {
 		$_GET = array();
-		$GLOBALS['VirtualFolder'] = $this->website;
+		VirtualFolder::$current = $this->website;
 	}
 
 	/**

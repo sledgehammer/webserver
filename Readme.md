@@ -1,5 +1,6 @@
-SledgeHammer HTTP module
--------------------------
+
+# Sledgehammer Webserver module
+
 
 Een HTTP/1.1 implementatie in PHP.
 
